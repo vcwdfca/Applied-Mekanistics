@@ -2,12 +2,9 @@ package me.ramidzkh.mekae2.ae2;
 
 import ae2.api.features.P2PTunnelAttunement;
 import me.ramidzkh.mekae2.item.AMItems;
-import me.ramidzkh.mekae2.util.AMText;
-import me.ramidzkh.mekae2.AppliedMekanistics;
-import mekanism.api.gas.IGasHandler;
-import mekanism.common.capabilities.Capabilities;
+import mekanism.common.MekanismBlocks;
 import net.minecraft.util.ResourceLocation;
-import net.minecraftforge.common.capabilities.Capability;
+import net.minecraftforge.oredict.OreDictionary;
 
 public final class AMP2PAttunements {
 
@@ -23,13 +20,10 @@ public final class AMP2PAttunements {
         registered = registerGasAttunement(AMItems.GAS_P2P_TUNNEL.id());
     }
 
-    static boolean registerGasAttunement(ResourceLocation tunnelPart) {
-        Capability<IGasHandler> gasCapability = Capabilities.GAS_HANDLER_CAPABILITY;
-        if (gasCapability == null) {
-            AppliedMekanistics.LOGGER.warn("Mekanism gas capability is not available during AppMek P2P attunement registration");
-            return false;
-        }
-        P2PTunnelAttunement.registerAttunementApi(tunnelPart, gasCapability, AMText.GASES.text(), true);
+    static boolean registerGasAttunement(ResourceLocation tunnelId) {
+        P2PTunnelAttunement.registerAttunementTag(tunnelId, true);
+        String oreName = P2PTunnelAttunement.getAttunementTag(tunnelId);
+        OreDictionary.registerOre(oreName, MekanismBlocks.GasTank);
         return true;
     }
 }
