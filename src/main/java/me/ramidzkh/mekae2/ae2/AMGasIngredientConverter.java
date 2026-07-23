@@ -18,7 +18,7 @@ public final class AMGasIngredientConverter implements IngredientConverter<GasSt
     @Nullable
     @Override
     public GasStack getIngredientFromStack(GenericStack stack) {
-        if (stack == null || stack.amount() <= 0) {
+        if (stack == null) {
             return null;
         }
 

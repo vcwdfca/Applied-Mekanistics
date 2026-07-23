@@ -1,6 +1,7 @@
-package me.ramidzkh.mekae2.ae2;
+package me.ramidzkh.mekae2.client;
 
 import ae2.api.integrations.hei.IngredientConverters;
+import me.ramidzkh.mekae2.ae2.AMGasIngredientConverter;
 import mezz.jei.api.IModPlugin;
 import mezz.jei.api.IModRegistry;
 import mezz.jei.api.JEIPlugin;
@@ -15,4 +16,5 @@ public final class AMHeiPlugin implements IModPlugin {
     public void register(IModRegistry registry) {
         IngredientConverters.register(new AMGasIngredientConverter());
     }
+
 }
