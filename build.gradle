@@ -115,6 +115,10 @@ unimined.minecraft {
 
     defaultRemapJar = false
 
+    String jarTaskName = propertyBool('enable_shadow') ? "shadowJar" : "jar"
+
+    remap(tasks.named(jarTaskName).get())
+
     mods {
         remap(configurations.modCompileOnly)
         remap(configurations.modRuntimeOnly)
@@ -245,6 +249,7 @@ jar {
             attributes(attribute_map)
         }
     }
+    finalizedBy(tasks.named(remapTaskName).get())
 }
 
 
