@@ -14,7 +14,6 @@ import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 
-@SuppressWarnings("UnstableApiUsage")
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID)
 public final class AMPartCapabilities {
 

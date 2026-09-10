@@ -11,7 +11,6 @@ import net.minecraft.util.EnumFacing;
 import javax.annotation.Nonnull;
 import org.jetbrains.annotations.Nullable;
 
-@SuppressWarnings("UnstableApiUsage")
 public class GenericStackGasStorage implements IGasHandler {
 
     private final GenericInternalInventory inv;

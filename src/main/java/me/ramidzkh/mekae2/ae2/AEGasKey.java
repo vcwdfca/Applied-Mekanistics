@@ -113,18 +113,8 @@ public final class AEGasKey extends AEKey {
     }
 
     @Override
-    public boolean isTagged(String tag) {
-        return false;
-    }
-
-    @Override
     public @Nullable NBTBase get(String componentId) {
         return null;
-    }
-
-    @Override
-    public boolean hasComponents() {
-        return false;
     }
 
     @Override
