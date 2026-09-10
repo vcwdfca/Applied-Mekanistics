@@ -245,7 +245,6 @@ jar {
             attributes(attribute_map)
         }
     }
-    finalizedBy(tasks.named(remapTaskName).get())
 }
 
 
