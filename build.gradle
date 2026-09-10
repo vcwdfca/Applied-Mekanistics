@@ -1,38 +1,29 @@
+import org.jetbrains.gradle.ext.Gradle
+
 plugins {
     id 'java'
     id 'java-library'
     id 'maven-publish'
-    id 'signing'
-    id 'com.gradleup.shadow' version '9.4.1'
     id 'org.jetbrains.gradle.plugin.idea-ext' version '1.4.1'
-    id 'xyz.wagyourtail.unimined' version '1.4.23-kappa'
+    id 'com.gradleup.shadow' version '9.4.0'
+    id 'xyz.wagyourtail.unimined' version '1.4.37-kappa'
+    id 'com.diffplug.spotless' version '8.4.0'
 }
-
-import org.jetbrains.gradle.ext.Gradle
 
 apply from: 'gradle/scripts/helpers.gradle'
 
 private String gitOutput(List<String> args, String fallback) {
-    def command = ['git'] + args
     try {
-        def process = new ProcessBuilder(command)
+        def process = new ProcessBuilder(['git'] + args)
             .directory(rootProject.projectDir)
             .redirectErrorStream(true)
             .start()
         def stdout = process.inputStream.getText('UTF-8').trim()
-        def exitCode = process.waitFor()
-        if (exitCode == 0 && !stdout.isEmpty()) {
+        if (process.waitFor() == 0 && !stdout.isEmpty()) {
             return stdout
         }
-        logger.warn(
-            "Git command '{}' exited with code {} and output '{}'; using fallback '{}'.",
-            command.join(' '),
-            exitCode,
-            stdout,
-            fallback
-        )
-    } catch (Exception e) {
-        logger.warn("Git command '{}' failed; using fallback '{}'.", command.join(' '), fallback, e)
+    } catch (Exception ignored) {
+        // Fall through to the fallback for source archives or environments without git.
     }
     return fallback
 }
@@ -47,11 +38,13 @@ if (!gradle.startParameter.projectProperties.containsKey('mod_version')) {
     project.setProperty('mod_version', defaultModVersion())
 }
 
+// Early Assertions
 assertProperty 'mod_version'
 assertProperty 'root_package'
 assertProperty 'mod_id'
 assertProperty 'mod_name'
 
+assertSubProperties 'use_lombok_ap', 'lombok_version'
 assertSubProperties 'use_access_transformer', 'access_transformer_locations'
 assertSubProperties 'is_coremod', 'coremod_includes_mod', 'coremod_plugin_class_name'
 assertSubProperties 'use_asset_mover', 'asset_mover_version'
@@ -89,41 +82,48 @@ configurations {
     runtimeOnly.extendsFrom(modRuntimeOnly)
 }
 
-String remapTaskName = propertyBool('enable_shadow') ? 'remapShadowJar' : 'remapJar'
+String remapTaskName = propertyBool('enable_shadow') ? "remapShadowJar" : "remapJar"
 
 unimined.minecraft {
-    version '1.12.2'
+    version "1.12.2"
 
     mappings {
-        mcp('stable', '39-1.12')
+        mcp("stable", "39-1.12")
     }
 
     cleanroom {
         if (propertyBool('use_access_transformer')) {
             accessTransformer "${rootProject.projectDir}/src/main/resources/${propertyString('access_transformer_locations')}"
         }
-        loader '0.5.12-alpha'
-        runs.auth.username = propertyString('minecraft_username')
+        loader "0.5.14-alpha"
+        runs.auth.username = minecraft_username
         runs.all {
+            systemProperty("crl.dev.mixin", "${mod_id}.default.mixin.json,${mod_id}.mod.mixin.json")
             def extraArgs = propertyString('extra_jvm_args')
             if (extraArgs != null && !extraArgs.trim().isEmpty()) {
-                jvmArgs += extraArgs.split { '\\s+' }.toList()
+                jvmArgs += extraArgs.split { "\\s+" }.toList()
             }
             if (propertyBool('enable_foundation_debug')) {
-                systemProperty('foundation.dump', 'true')
-                systemProperty('foundation.verbose', 'true')
+                systemProperty("foundation.dump", "true")
+                systemProperty("foundation.verbose", "true")
             }
             if (propertyBool('is_coremod')) {
-                systemProperty('fml.coreMods.load', propertyString('coremod_plugin_class_name'))
+                systemProperty("fml.coreMods.load", propertyString('coremod_plugin_class_name'))
             }
+            return
         }
     }
 
     defaultRemapJar = false
 
-    String jarTaskName = propertyBool('enable_shadow') ? 'shadowJar' : 'jar'
+    String jarTaskName = propertyBool('enable_shadow') ? "shadowJar" : "jar"
 
-    remap(tasks.named(jarTaskName).get())
+    remap(tasks.named(jarTaskName).get()) {
+        mixinRemap {
+            enableBaseMixin()
+            enableMixinExtra()
+        }
+    }
 
     mods {
         remap(configurations.modCompileOnly)
@@ -132,6 +132,13 @@ unimined.minecraft {
 }
 
 dependencies {
+    if (propertyBool('use_lombok_ap')) {
+        compileOnly "org.projectlombok:lombok:${propertyString('lombok_version')}"
+        annotationProcessor "org.projectlombok:lombok:${propertyString('lombok_version')}"
+
+        testCompileOnly "org.projectlombok:lombok:${propertyString('lombok_version')}"
+        testAnnotationProcessor "org.projectlombok:lombok:${propertyString('lombok_version')}"
+    }
     if (propertyBool('use_asset_mover')) {
         implementation "com.cleanroommc:assetmover:${propertyString('asset_mover_version')}"
     }
@@ -139,15 +146,19 @@ dependencies {
         testImplementation 'org.junit.jupiter:junit-jupiter:6.0.3'
         testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     }
+    compileOnly 'com.google.code.findbugs:jsr305:3.0.2'
 }
 
 apply from: 'gradle/scripts/dependencies.gradle'
 
 def generatedTagsSourceDir = layout.buildDirectory.dir('generated/sources/tags/java')
-def tagsPackage = "${propertyString('root_package')}.mekae2"
 def generateTagsSource = tasks.register('generateTagsSource') {
-    def outputFile = generatedTagsSourceDir.map { it.file("${tagsPackage.replace('.', '/')}/Tags.java") }
+    def tagsPackage = "${propertyString('root_package')}.${propertyString('mod_id')}"
+    def outputFile = generatedTagsSourceDir.map {
+        it.file("${tagsPackage.replace('.', '/')}/Tags.java")
+    }
 
+    inputs.property('root_package', propertyString('root_package'))
     inputs.property('mod_id', propertyString('mod_id'))
     inputs.property('mod_name', propertyString('mod_name'))
     inputs.property('mod_version', propertyString('mod_version'))
@@ -155,7 +166,6 @@ def generateTagsSource = tasks.register('generateTagsSource') {
 
     doLast {
         def file = outputFile.get().asFile
-        delete generatedTagsSourceDir
         file.parentFile.mkdirs()
         file.text = """package ${tagsPackage};
 
@@ -196,46 +206,10 @@ processResources {
     }
 }
 
-tasks.register('syncDevRuntimeResources', Copy) {
-    from sourceSets.main.output.resourcesDir
-    into sourceSets.main.java.classesDirectory
-    dependsOn tasks.named('classes'), tasks.named('processResources')
-    doFirst {
-        delete fileTree(sourceSets.main.java.classesDirectory) {
-            include 'META-INF/**'
-            include 'assets/**'
-            include '*.json'
-            include '*.info'
-            include '*.png'
-        }
-    }
-}
-
-tasks.withType(Javadoc).configureEach {
-    dependsOn tasks.named('syncDevRuntimeResources')
-}
-
-tasks.matching { it.name in ['runClient', 'runServer'] }.configureEach {
-    dependsOn tasks.named('syncDevRuntimeResources')
-}
-
-idea {
-    module {
-        inheritOutputDirs = true
-    }
-    project {
-        settings {
-            runConfigurations {
-                '1. Build'(Gradle) {
-                    taskNames = ['build']
-                }
-                '2. Run Client'(Gradle) {
-                    taskNames = ['runClient']
-                }
-                '3. Run Server'(Gradle) {
-                    taskNames = ['runServer']
-                }
-            }
+sourceSets {
+    main {
+        java {
+            srcDir generatedTagsSourceDir
         }
     }
 }
@@ -246,15 +220,14 @@ if (!propertyBool('enable_shadow')) {
 
 compileJava {
     dependsOn(generateTagsSource)
-    sourceCompatibility = targetCompatibility = JavaVersion.toVersion(25)
+    sourceCompatibility = targetCompatibility = JavaVersion.VERSION_25
 }
 
-tasks.named('sourcesJar').configure {
+tasks.matching { it.name == 'sourcesJar' }.configureEach {
     dependsOn(generateTagsSource)
 }
 
 jar {
-    dependsOn tasks.named('syncDevRuntimeResources')
     archiveClassifier = 'dev'
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     if (configurations.contain.size() > 0) {
@@ -264,31 +237,34 @@ jar {
     }
     doFirst {
         manifest {
-            def attributeMap = [:]
-            attributeMap['ModType'] = 'CRL'
+            def attribute_map = [:]
+            attribute_map['ModType'] = "CRL"
+            attribute_map['MixinConfigs'] = "${mod_id}.default.mixin.json,${mod_id}.mod.mixin.json"
             if (configurations.contain.size() > 0) {
-                attributeMap['ContainedDeps'] = configurations.contain.collect { it.name }.join(' ')
-                attributeMap['NonModDeps'] = true
+                attribute_map['ContainedDeps'] = configurations.contain.collect { it.name }.join(' ')
+                attribute_map['NonModDeps'] = true
             }
             if (propertyBool('is_coremod')) {
-                attributeMap['FMLCorePlugin'] = propertyString('coremod_plugin_class_name')
+                attribute_map['FMLCorePlugin'] = propertyString('coremod_plugin_class_name')
                 if (propertyBool('coremod_includes_mod')) {
-                    attributeMap['FMLCorePluginContainsFMLMod'] = true
+                    attribute_map['FMLCorePluginContainsFMLMod'] = true
                 }
             }
             if (propertyBool('use_access_transformer')) {
-                attributeMap['FMLAT'] = propertyString('access_transformer_locations')
+                attribute_map['FMLAT'] = propertyString('access_transformer_locations')
             }
-            attributes(attributeMap)
+            attributes(attribute_map)
         }
     }
     finalizedBy(tasks.named(remapTaskName).get())
 }
 
+
 shadowJar {
     configurations = [project.configurations.shadow]
-    archiveClassifier = 'shadow'
+    archiveClassifier = "shadow"
 }
+
 
 tasks.named(remapTaskName).configure {
     doFirst {
@@ -299,9 +275,40 @@ tasks.named(remapTaskName).configure {
     }
 }
 
+idea {
+    module {
+        inheritOutputDirs = true
+    }
+    project {
+        settings {
+            runConfigurations {
+                "0. Apply Spotless"(Gradle) {
+                    taskNames = ["spotlessApply"]
+                }
+                "1. Run Client"(Gradle) {
+                    taskNames = ["runClient"]
+                }
+                "2. Run Server"(Gradle) {
+                    taskNames = ["runServer"]
+                }
+                "3. Build Mod"(Gradle) {
+                    taskNames = ["build"]
+                }
+            }
+            compiler.javac {
+                afterEvaluate {
+                    javacAdditionalOptions = "-encoding utf8"
+                    moduleJavacAdditionalOptions = [
+                            (project.name + ".main"): tasks.compileJava.options.compilerArgs.collect { '"' + it + '"' }.join(' ')
+                    ]
+                }
+            }
+        }
+    }
+}
+
 compileTestJava {
-    dependsOn tasks.named('syncDevRuntimeResources')
-    sourceCompatibility = targetCompatibility = JavaVersion.toVersion(25)
+    sourceCompatibility = targetCompatibility = JavaVersion.VERSION_25
 }
 
 test {
@@ -318,18 +325,6 @@ test {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
-}
-
-sourceSets {
-    main {
-        java {
-            srcDir generatedTagsSourceDir
-        }
-    }
-    test {
-        compileClasspath += sourceSets.main.compileClasspath
-        runtimeClasspath += sourceSets.main.runtimeClasspath
-    }
 }
 
 apply from: 'gradle/scripts/publishing.gradle'
